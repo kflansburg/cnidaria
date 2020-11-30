@@ -8,18 +8,25 @@ const CNI_VERSION: &str = "1.0.0";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-/// This is a JSON document describing a network to which a container can be joined.
+/// This is a JSON document describing a network to which a container can be
+/// joined.
 pub struct NetworkConfiguration {
-    /// Semantic Version 2.0 of CNI specification to which this configuration conforms.
+    /// Semantic Version 2.0 of CNI specification to which this configuration
+    /// conforms.
     pub cni_version: String,
-    /// Network name. This should be unique across all containers on the host (or other administrative domain). Must start with a alphanumeric character, optionally followed by any combination of one or more alphanumeric characters, underscore (_), dot (.) or hyphen (-).
+    /// Network name. This should be unique across all containers on the host
+    /// (or other administrative domain). Must start with a alphanumeric
+    /// character, optionally followed by any combination of one or more
+    /// alphanumeric characters, underscore (_), dot (.) or hyphen (-).
     pub name: String,
     /// Refers to the filename of the CNI plugin executable.
     #[serde(rename = "type")]
     pub ty: String,
     /// Additional arguments provided by the container runtime.
     pub args: Option<Map<String, Value>>,
-    /// If supported by the plugin, sets up an IP masquerade on the host for this network. This is necessary if the host will act as a gateway to subnets that are not able to route to the IP assigned to the container.
+    /// If supported by the plugin, sets up an IP masquerade on the host for
+    /// this network. This is necessary if the host will act as a gateway to
+    /// subnets that are not able to route to the IP assigned to the container.
     pub ip_masq: Option<bool>,
     /// Dictionary with IPAM specific values.
     pub ipam: Option<IpamConfiguration>,
@@ -44,11 +51,14 @@ pub struct IpamConfiguration {
 #[serde(rename_all = "camelCase")]
 /// Dictionary with DNS specific values.
 pub struct DnsConfig {
-    /// List of a priority-ordered list of DNS nameservers that this network is aware of. Each entry in the list is a string containing either an IPv4 or an IPv6 address.
+    /// List of a priority-ordered list of DNS nameservers that this network is
+    /// aware of. Each entry in the list is a string containing either an IPv4
+    /// or an IPv6 address.
     pub nameservers: Option<Vec<String>>,
     /// The local domain used for short hostname lookups.
     pub domain: Option<String>,
-    /// List of priority ordered search domains for short hostname lookups. Will be preferred over domain by most resolvers.
+    /// List of priority ordered search domains for short hostname lookups.
+    /// Will be preferred over domain by most resolvers.
     pub search: Option<Vec<String>>,
     /// List of options that can be passed to the resolver.
     pub options: Option<Vec<String>>,
@@ -56,15 +66,70 @@ pub struct DnsConfig {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Route configuration information.
+pub struct RouteConfig {
+    /// Destination subnet specified in CIDR notation.
+    pub dst: String,
+    /// IP of the gateway. If omitted, a default gateway is assumed (as
+    /// determined by the CNI plugin).
+    pub gw: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+/// IP configuration for a network interface.
+pub struct IPConfig {
+    /// An IP address in CIDR notation (eg "192.168.1.3/24").
+    pub address: String,
+    /// The default gateway for this subnet, if one exists.
+    pub gateway: Option<String>,
+    /// The index into the interfaces list for a CNI Plugin Result indicating
+    /// which interface this IP configuration should be applied to.
+    pub interface: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterfaceConfig {
+    pub name: String,
+    /// The hardware address of the interface. If L2 addresses are not
+    /// meaningful for the plugin then this field is optional.
+    pub mac: Option<String>,
+    /// Container/namespace-based environments should return the full
+    /// filesystem path to the network namespace of that sandbox.
+    /// Hypervisor/VM-based plugins should return an ID unique to the
+    /// virtualized sandbox the interface was created in. This item must be
+    /// provided for interfaces created or moved into a sandbox like a network
+    /// namespace or a hypervisor/VM.
+    pub sandbox: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Return information from a successful ADD plugin call.
-pub struct AddResult {}
+pub struct AddResult {
+    /// Semantic Version 2.0 of CNI specification used by the plugin.
+    pub cni_version: String,
+    /// Describes specific network interfaces the plugin created. If the
+    /// `CNI_IFNAME` variable exists the plugin must use that name for the
+    /// sandbox/hypervisor interface or return an error if it cannot.
+    pub interfaces: Vec<InterfaceConfig>,
+    /// List of IP configuration information.
+    pub ips: Vec<IPConfig>,
+    /// List of route configuration information.
+    pub routes: Option<Vec<RouteConfig>>,
+    /// Common DNS information.
+    pub dns: Option<DnsConfig>,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Return information from a successful `ADD` plugin call.
 pub struct VersionResult {
-    cni_version: &'static str,
-    supported_versions: Vec<String>,
+    /// Semantic Version 2.0 of CNI specification used by the plugin.
+    pub cni_version: &'static str,
+    /// List of CNI spec versions that this plugin supports.
+    pub supported_versions: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -73,7 +138,9 @@ pub struct VersionResult {
 pub struct PluginError {
     /// Semantic Version 2.0 of CNI specification used by the plugin.
     pub cni_version: &'static str,
-    /// Error codes 0-99 are reserved for well-known errors (see Well-known Error Codes section). Values of 100+ can be freely used for plugin specific errors.
+    /// Error codes 0-99 are reserved for well-known errors (see Well-known
+    /// Error Codes section). Values of 100+ can be freely used for plugin
+    /// specific errors.
     pub code: u32,
     /// Short error message.
     pub msg: String,
@@ -93,7 +160,8 @@ pub trait Plugin {
         interface_name: &str,
     ) -> Result<AddResult, PluginError>;
 
-    /// Delete container from network. Plugins should generally complete a `DEL` action without error even if some resources are missing.
+    /// Delete container from network. Plugins should generally complete a
+    /// `DEL` action without error even if some resources are missing.
     fn delete(
         &self,
         container_id: &str,
@@ -272,6 +340,7 @@ fn run_invoke<P: Plugin>(plugin: P) -> Result<(), PluginError> {
     }
 }
 
+/// Invoke plugin using environment variables and stdin.
 pub fn invoke<P: Plugin>(plugin: P) -> Result<(), PluginError> {
     match run_invoke(plugin) {
         Ok(()) => Ok(()),
